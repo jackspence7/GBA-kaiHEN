@@ -1,0 +1,148 @@
+diff --git a/src/platform/switch/main.c b/src/platform/switch/main.c
+index ad012f8..3dab297 100644
+--- a/src/platform/switch/main.c
++++ b/src/platform/switch/main.c
+@@ -98,7 +98,6 @@ static HidSixAxisSensorHandle sixaxisHandles[4];
+ static HidVibrationDeviceHandle vibrationDeviceHandles[4];
+ static HidVibrationValue vibrationStop = { .freq_low = 160.f, .freq_high = 320.f };
+ static bool usePbo = true;
+-static u8 vmode;
+ static u32 vwidth;
+ static u32 vheight;
+ static bool interframeBlending = false;
+@@ -114,7 +113,7 @@ static enum ScreenMode {
+ 	SM_AF,
+ 	SM_SF,
+ 	SM_MAX
+-} screenMode = SM_PA;
++} screenMode = SM_SF;
+ 
+ static enum FilterMode {
+ 	FM_NEAREST,
+@@ -133,6 +132,7 @@ static bool eglInit() {
+ 	EGLConfig config;
+ 	EGLint numConfigs;
+ 	static const EGLint attributeList[] = {
++		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+ 		EGL_RED_SIZE, 8,
+ 		EGL_GREEN_SIZE, 8,
+ 		EGL_BLUE_SIZE, 8,
+@@ -159,6 +159,13 @@ static bool eglInit() {
+ 	}
+ 
+ 	eglMakeCurrent(s_display, s_surface, s_surface, s_context);
++
++	// The frame size equals the window size set before eglInit(). Do not ask
++	// eglQuerySurface: on this stack it can report a different size than the
++	// real frame, which mis-sized glViewport and left the right side black.
++	vwidth = 1920;
++	vheight = 1080;
++
+ 	return true;
+ 
+ _fail2:
+@@ -377,7 +384,7 @@ static void _gameUnloaded(struct mGUIRunner* runner) {
+ }
+ 
+ static void _drawTex(struct mGUIRunner* runner, unsigned width, unsigned height, bool faded, bool blendTop) {
+-	glViewport(0, 1080 - vheight, vwidth, vheight);
++	glViewport(0, 0, vwidth, vheight);
+ 
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterMode == FM_LINEAR ? GL_LINEAR : GL_NEAREST);
+ 
+@@ -443,7 +450,7 @@ static void _drawTex(struct mGUIRunner* runner, unsigned width, unsigned height,
+ 	glBindVertexArray(0);
+ 	glUseProgram(0);
+ 	glDisable(GL_BLEND);
+-	glViewport(0, 1080 - runner->params.height, runner->params.width, runner->params.height);
++	glViewport(0, 0, runner->params.width, runner->params.height);
+ }
+ 
+ static void _prepareForFrame(struct mGUIRunner* runner) {
+@@ -548,19 +555,9 @@ static void _setFrameLimiter(struct mGUIRunner* runner, bool limit) {
+ 
+ static bool _running(struct mGUIRunner* runner) {
+ 	UNUSED(runner);
+-	u8 newMode = appletGetOperationMode();
+-	if (newMode != vmode) {
+-		if (newMode == AppletOperationMode_Console) {
+-			vwidth = 1920;
+-			vheight = 1080;
+-		} else {
+-			vwidth = 1280;
+-			vheight = 720;
+-		}
+-		nwindowSetCrop(nwindowGetDefault(), 0, 0, vwidth, vheight);
+-		vmode = newMode;
+-	}
+-
++	// The window is a fixed 1920x1080 (nwindowSetDimensions), so docking does
++	// not change the frame size; there is nothing to re-query. (vwidth/vheight
++	// stay 1920x1080 and the console scales 1080p up to a docked TV.)
+ 	return appletMainLoop();
+ }
+ 
+@@ -671,7 +668,7 @@ static int _batteryState(void) {
+ }
+ 
+ static void _guiPrepare(void) {
+-	glViewport(0, 1080 - vheight, vwidth, vheight);
++	glViewport(0, 0, vwidth, vheight);
+ }
+ 
+ static void _guiFinish(void) {
+@@ -697,7 +694,7 @@ static enum GUIKeyboardStatus _keyboardRun(struct GUIKeyboardParams* keyboard) {
+ }
+ 
+ static void glInit(void) {
+-	glViewport(0, 1080 - vheight, vwidth, vheight);
++	glViewport(0, 0, vwidth, vheight);
+ 	glClearColor(0.f, 0.f, 0.f, 1.f);
+ 
+ 	glActiveTexture(GL_TEXTURE0);
+@@ -841,6 +838,10 @@ static void hidTeardown(void) {
+ 
+ int main(int argc, char* argv[]) {
+ 	NWindow* window = nwindowGetDefault();
++	// The Switch 2 panel is 1920x1080. Size the window (and therefore the
++	// EGL swapchain) to it so the game fills the screen; VI2 presents it 1:1.
++	// This matches the working moonlight-nx2 client, which never relies on the
++	// 1280x720 default window.
+ 	nwindowSetDimensions(window, 1920, 1080);
+ 
+ 	socketInitializeDefault();
+@@ -869,16 +870,6 @@ int main(int argc, char* argv[]) {
+ 
+ 	font = GUIFontCreate();
+ 
+-	vmode = appletGetOperationMode();
+-	if (vmode == AppletOperationMode_Console) {
+-		vwidth = 1920;
+-		vheight = 1080;
+-	} else {
+-		vwidth = 1280;
+-		vheight = 720;
+-	}
+-	nwindowSetCrop(window, 0, 0, vwidth, vheight);
+-
+ 	glInit();
+ 	hidSetup();
+ 
+@@ -902,7 +893,7 @@ int main(int argc, char* argv[]) {
+ 
+ 	struct mGUIRunner runner = {
+ 		.params = {
+-			1280, 720,
++			1920, 1080,
+ 			font, "/",
+ 			_drawStart, _drawEnd,
+ 			_pollInput, _pollCursor,
+@@ -1061,6 +1052,8 @@ int main(int argc, char* argv[]) {
+ 		.pollGameInput = _pollGameInput,
+ 		.running = _running
+ 	};
++	runner.params.width = vwidth;
++	runner.params.height = vheight;
+ 	mGUIInit(&runner, "switch");
+ 
+ 	_mapKey(&runner.params.keyMap, AUTO_INPUT, HidNpadButton_A, GUI_INPUT_SELECT);

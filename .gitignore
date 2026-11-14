@@ -1,0 +1,23 @@
+# Upstream clones (populated by tools/setup.sh)
+/vendor/
+
+# Build artifacts
+/dist/
+build/
+build-*/
+*.nro
+*.elf
+*.nacp
+*.o
+*.a
+
+# Downloaded third-party releases (kaiHEN zip and its unpacked testship)
+/_dl/
+/testship/
+
+# Internal dev notes (not for the public repo)
+/DEVELOPMENT.md
+/HANDOFF.md
+
+# macOS
+.DS_Store

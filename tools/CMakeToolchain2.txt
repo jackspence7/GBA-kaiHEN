@@ -1,0 +1,39 @@
+# Switch 2 (kaiHEN / libounce) CMake toolchain for mGBA.
+#
+# Modeled on mGBA's own src/platform/switch/CMakeToolchain.txt, but targets
+# libounce + OunceVK instead of libnx + nouveau, and the Switch 2 CPU
+# (Tegra T239, Cortex-A78C). Copied into the mGBA tree by tools/build.sh.
+#
+# The only real differences from the Switch 1 toolchain:
+#   - NX_ROOT is libounce (which ships a libnx.a shim, so -lnx still works).
+#   - arch flags target cortex-a78c and add -fPIC + local-exec TLS (libounce
+#     is built that way).
+#   - the Switch 2 portlibs (OunceVK: EGL/GLES/Vulkan) are searched first,
+#     then the Switch 1 portlibs (zlib etc.).
+#   - __SWITCH2__ is defined (libounce headers require it).
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/devkitPro.cmake)
+
+if(DEFINED ENV{LIBOUNCE})
+	set(LIBOUNCE $ENV{LIBOUNCE})
+else()
+	set(LIBOUNCE ${DEVKITPRO}/libounce)
+endif()
+
+set(SWITCH2_PORTLIBS ${DEVKITPRO}/portlibs/switch2)
+set(SWITCH_PORTLIBS ${DEVKITPRO}/portlibs/switch)
+
+set(cross_prefix aarch64-none-elf-)
+# SWITCH2_CPU from libounce/switch2_cpu.mk is -mcpu=cortex-a78c+crypto.
+set(arch_flags "-mcpu=cortex-a78c+crypto -mtp=soft -fPIC -ftls-model=local-exec -ffunction-sections -fdata-sections")
+set(inc_flags "-I${LIBOUNCE}/include -I${SWITCH2_PORTLIBS}/include -I${SWITCH_PORTLIBS}/include ${arch_flags}")
+set(link_flags "-L${LIBOUNCE}/lib -L${SWITCH2_PORTLIBS}/lib -L${SWITCH_PORTLIBS}/lib -lnx -specs=${LIBOUNCE}/switch.specs ${arch_flags}")
+
+set(CMAKE_SYSTEM_PROCESSOR aarch64 CACHE INTERNAL "processor")
+set(CMAKE_LIBRARY_ARCHITECTURE aarch64-none-elf CACHE INTERNAL "abi")
+
+set(SWITCH ON)
+add_definitions(-D__SWITCH__ -D__SWITCH2__)
+
+create_devkit(A64)
+
+set(CMAKE_FIND_ROOT_PATH ${DEVKITA64}/${CMAKE_LIBRARY_ARCHITECTURE} ${SWITCH2_PORTLIBS} ${SWITCH_PORTLIBS})
